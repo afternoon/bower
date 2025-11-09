@@ -3,7 +3,7 @@ mod post;
 mod sexp_html;
 
 use steel::steel_vm::engine::Engine;
-use steel::rvals::SteelString;
+use steel::rvals::{SteelString, SteelVal, IntoSteelVal};
 use steel::steel_vm::register_fn::RegisterFn;
 use std::fs;
 use std::path::Path;
@@ -26,73 +26,31 @@ fn write_file_steel(path: SteelString, content: SteelString) -> Result<String, S
         .map_err(|e| format!("Failed to write file {}: {}", path.as_str(), e))
 }
 
-// List files in a directory
-fn list_files_steel(dir: SteelString) -> Result<Vec<String>, String> {
-    let entries = fs::read_dir(dir.as_str())
-        .map_err(|e| format!("Failed to read directory {}: {}", dir.as_str(), e))?;
-
-    let mut files = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Error reading entry: {}", e))?;
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(path_str) = path.to_str() {
-                files.push(path_str.to_string());
-            }
-        }
-    }
-
-    Ok(files)
-}
-
-// Create a directory (including parents)
-fn create_directory_steel(path: SteelString) -> Result<String, String> {
-    fs::create_dir_all(path.as_str())
-        .map(|_| format!("Created directory {}", path.as_str()))
-        .map_err(|e| format!("Failed to create directory {}: {}", path.as_str(), e))
-}
-
-// Check if a file exists
-fn file_exists_steel(path: SteelString) -> bool {
-    Path::new(path.as_str()).exists()
-}
-
-// Split a string by a delimiter
-fn string_split_steel(s: SteelString, delimiter: SteelString) -> Vec<String> {
-    s.as_str()
-        .split(delimiter.as_str())
-        .map(|s| s.to_string())
-        .collect()
-}
-
-// Join a list of strings with a delimiter
-fn string_join_steel(strings: Vec<SteelString>, delimiter: SteelString) -> String {
-    strings
-        .iter()
-        .map(|s| s.as_str())
-        .collect::<Vec<_>>()
-        .join(delimiter.as_str())
-}
-
-// Convert s-expression to HTML (simplified version)
-fn sexp_to_html_steel(sexp_str: SteelString) -> Result<String, String> {
-    // For now, this is a placeholder - we'll implement proper s-exp to HTML conversion
-    Ok(sexp_str.to_string())
-}
-
-// Check if a string starts with a prefix
-fn string_starts_with_steel(s: SteelString, prefix: SteelString) -> bool {
-    s.as_str().starts_with(prefix.as_str())
-}
-
-// Number to string
-fn number_to_string_steel(n: i64) -> String {
-    n.to_string()
-}
-
 // Symbol to string (in Steel, we'll just pass strings)
 fn displayln_steel(s: SteelString) {
     println!("{}", s.as_str());
+}
+
+// Convert a Post to a SteelVal association list
+// Creates: '((filepath "...") (title "...") (date "..."))
+fn post_to_steel_alist(filename: &str, post: &post::Post) -> SteelVal {
+    // Create symbol for keys
+    let filepath_key: SteelVal = SteelVal::SymbolV("filepath".into());
+    let title_key: SteelVal = SteelVal::SymbolV("title".into());
+    let date_key: SteelVal = SteelVal::SymbolV("date".into());
+
+    // Create string values
+    let filepath_val: SteelVal = filename.to_string().into_steelval().unwrap();
+    let title_val: SteelVal = post.title.clone().into_steelval().unwrap();
+    let date_val: SteelVal = post.date.clone().into_steelval().unwrap();
+
+    // Create pairs (key value)
+    let filepath_pair = vec![filepath_key, filepath_val].into_steelval().unwrap();
+    let title_pair = vec![title_key, title_val].into_steelval().unwrap();
+    let date_pair = vec![date_key, date_val].into_steelval().unwrap();
+
+    // Create the association list
+    vec![filepath_pair, title_pair, date_pair].into_steelval().unwrap()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -194,36 +152,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate index.html
     println!("\nGenerating index.html...");
-    let post_list: Vec<String> = posts
+
+    // Build a strongly-typed list of post data using SteelVal
+    let posts_data: Vec<SteelVal> = posts
         .iter()
         .map(|p| {
-            format!(
-                "<li><a href=\"{}.html\">{}</a> - {}</li>",
-                Path::new(&p.file_path)
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-                p.title,
-                p.date
-            )
+            let filename = Path::new(&p.file_path)
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap();
+            post_to_steel_alist(filename, p)
         })
         .collect();
 
-    let index_content = format!("<h2>All Posts</h2><ul>{}</ul>", post_list.join(""));
+    // Convert Vec<SteelVal> to a SteelVal list
+    let posts_list: SteelVal = posts_data.into_steelval().unwrap();
 
-    let index_call = format!(
-        "(render-page site \"{}\")",
-        index_content.replace("\"", "\\\"")
-    );
-    let index_call_static: &'static str = Box::leak(index_call.into_boxed_str());
+    // Get site config as a SteelVal
+    let site_config = engine.run("site")?.into_iter().next()
+        .ok_or("Failed to get site config")?;
 
-    match engine.run(index_call_static) {
-        Ok(result) => {
-            if let Some(sexp) = result.first() {
-                let full_html = format!("<!DOCTYPE html>\n{}", sexp_html::sexp_to_html(sexp));
-                fs::write("build/index.html", &full_html)?;
-                println!("  → Generated: build/index.html");
+    // Call render-index with strongly-typed arguments
+    match engine.call_function_by_name_with_args("render-index", vec![site_config.clone(), posts_list]) {
+        Ok(index_sexp) => {
+            // Wrap the index content in render-page
+            let index_html = sexp_html::sexp_to_html(&index_sexp);
+            let page_content = index_html.replace("\"", "\\\"").replace("\n", " ");
+
+            // Call render-page with the index content
+            let page_call = format!("(render-page site \"{}\")", page_content);
+            let page_call_static: &'static str = Box::leak(page_call.into_boxed_str());
+
+            match engine.run(page_call_static) {
+                Ok(page_result) => {
+                    if let Some(page_sexp) = page_result.first() {
+                        let full_html = format!("<!DOCTYPE html>\n{}", sexp_html::sexp_to_html(page_sexp));
+                        fs::write("build/index.html", &full_html)?;
+                        println!("  → Generated: build/index.html");
+                    }
+                }
+                Err(e) => eprintln!("Error rendering index page: {:?}", e),
             }
         }
         Err(e) => eprintln!("Error generating index: {:?}", e),

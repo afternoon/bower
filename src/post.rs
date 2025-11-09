@@ -4,7 +4,6 @@ use std::collections::HashMap;
 pub struct Post {
     pub title: String,
     pub date: String,
-    pub tags: Vec<String>,
     pub content_html: String,
     pub file_path: String,
 }
@@ -30,7 +29,6 @@ pub fn parse_post_file(file_path: &str, content: &str) -> Result<Post, String> {
     Ok(Post {
         title: metadata.get("title").cloned().unwrap_or_else(|| "Untitled".to_string()),
         date: metadata.get("date").cloned().unwrap_or_else(|| "".to_string()),
-        tags: vec![], // Simplified for now
         content_html,
         file_path: file_path.to_string(),
     })

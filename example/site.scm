@@ -36,3 +36,19 @@
       (time ((datetime ,post-date)) ,post-date)
       (div ((class "content"))
         ,post-content))))
+
+;; Render a single post item for the index
+(define (render-post-item post)
+  (let ((filepath (alist-get post 'filepath))
+        (title (alist-get post 'title))
+        (date (alist-get post 'date)))
+    `(li
+      (a ((href ,(string-append filepath ".html"))) ,title)
+      " - "
+      ,date)))
+
+;; Render the index page with a list of posts
+(define (render-index config posts)
+  `(div
+    (h2 "All Posts")
+    (ul ,@(map render-post-item posts))))

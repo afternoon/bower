@@ -2,8 +2,8 @@
 /target
 Cargo.lock
 
-# Build output
-/build
+# Build output for example site
+/example/build
 
 # IDE
 .vscode/

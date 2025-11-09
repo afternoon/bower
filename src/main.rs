@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     engine.register_fn("displayln", displayln_steel);
 
     // Load site.scm
-    let site_scm_path = "example/site.scm";
+    let site_scm_path = "site.scm";
     if !Path::new(site_scm_path).exists() {
         eprintln!("Error: site.scm not found at {}", site_scm_path);
         return Ok(());
@@ -126,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Site configuration loaded: {:?}\n", config_result);
 
     // Process posts
-    let posts_dir = "example/posts";
+    let posts_dir = "posts";
     let post_files = fs::read_dir(posts_dir)?;
 
     let mut posts = Vec::new();

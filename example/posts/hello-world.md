@@ -1,7 +1,6 @@
-(post
- (title "Hello World")
- (date "2025-01-01T12:00:00+00:00")
- (tags (scheme static-site-generator)))
+---
+title: Hello World
+date: 2025-01-01T12:00:00+00:00
 ---
 # Welcome to Bower
 

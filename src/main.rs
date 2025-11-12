@@ -56,42 +56,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let site_scm = fs::read_to_string(site_scm_path)?;
 
-    // Check which helper functions are missing from site.scm
+    // Check which helper functions are missing from site.scm and inject them
     let has_render_full_post = site_scm.contains("(define (render-full-post");
     let has_render_full_index = site_scm.contains("(define (render-full-index");
     let has_render_all_posts = site_scm.contains("(define (render-all-posts");
 
-    // Build helpers string with only the missing functions
     let mut helpers = String::new();
-    if !has_render_full_post || !has_render_full_index || !has_render_all_posts {
-        helpers.push_str("\n;; Bower default helper functions\n");
 
-        if !has_render_full_post {
-            helpers.push_str(r#"
-;; Render a complete post (post wrapped in page template)
+    if !has_render_full_post {
+        helpers.push_str(r#"
 (define (render-full-post post)
   (render-page (render-post post)))
 "#);
-        }
+    }
 
-        if !has_render_full_index {
-            helpers.push_str(r#"
-;; Render a complete index page (index wrapped in page template)
+    if !has_render_full_index {
+        helpers.push_str(r#"
 (define (render-full-index posts)
   (render-page (render-index posts)))
 "#);
-        }
+    }
 
-        if !has_render_all_posts {
-            helpers.push_str(r#"
-;; Batch render all posts - returns a list of (filepath html-sexp) pairs
+    if !has_render_all_posts {
+        helpers.push_str(r#"
 (define (render-all-posts posts)
   (map (lambda (post)
-         (let ((filepath (hash-ref post 'filepath)))
-           (list filepath (render-full-post post))))
+         (list (hash-ref post 'filepath)
+               (render-full-post post)))
        posts))
 "#);
-        }
     }
 
     // Concatenate site.scm with needed Bower helpers

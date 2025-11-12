@@ -65,23 +65,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut helpers = String::new();
     if !has_render_full_post || !has_render_full_index || !has_render_all_posts {
         helpers.push_str("\n;; Bower default helper functions\n");
+
         if !has_render_full_post {
-            helpers.push_str(";; Render a complete post (post wrapped in page template)\n");
-            helpers.push_str("(define (render-full-post post)\n");
-            helpers.push_str("  (render-page (render-post post)))\n\n");
+            helpers.push_str(r#"
+;; Render a complete post (post wrapped in page template)
+(define (render-full-post post)
+  (render-page (render-post post)))
+"#);
         }
+
         if !has_render_full_index {
-            helpers.push_str(";; Render a complete index page (index wrapped in page template)\n");
-            helpers.push_str("(define (render-full-index posts)\n");
-            helpers.push_str("  (render-page (render-index posts)))\n\n");
+            helpers.push_str(r#"
+;; Render a complete index page (index wrapped in page template)
+(define (render-full-index posts)
+  (render-page (render-index posts)))
+"#);
         }
+
         if !has_render_all_posts {
-            helpers.push_str(";; Batch render all posts - returns a list of (filepath html-sexp) pairs\n");
-            helpers.push_str("(define (render-all-posts posts)\n");
-            helpers.push_str("  (map (lambda (post)\n");
-            helpers.push_str("         (let ((filepath (hash-ref post 'filepath)))\n");
-            helpers.push_str("           (list filepath (render-full-post post))))\n");
-            helpers.push_str("       posts))\n");
+            helpers.push_str(r#"
+;; Batch render all posts - returns a list of (filepath html-sexp) pairs
+(define (render-all-posts posts)
+  (map (lambda (post)
+         (let ((filepath (hash-ref post 'filepath)))
+           (list filepath (render-full-post post))))
+       posts))
+"#);
         }
     }
 

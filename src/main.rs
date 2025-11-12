@@ -3,9 +3,7 @@ mod post;
 mod sexp_html;
 
 use steel::steel_vm::engine::Engine;
-use steel::rvals::{SteelVal, IntoSteelVal, SteelHashMap};
-use steel::gc::Gc;
-use steel::HashMap;
+use steel::rvals::{SteelVal, IntoSteelVal};
 use std::fs;
 use std::path::Path;
 
@@ -27,35 +25,6 @@ const HELPER_RENDER_ALL_POSTS: &str = r#"
                (render-full-post post)))
        posts))
 "#;
-
-// Convert a Post to a SteelVal hash table
-// Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
-fn post_to_steel_hash(filename: &str, post: &post::Post) -> SteelVal {
-    // Create symbol for keys
-    let filepath_key: SteelVal = SteelVal::SymbolV("filepath".into());
-    let title_key: SteelVal = SteelVal::SymbolV("title".into());
-    let date_key: SteelVal = SteelVal::SymbolV("date".into());
-    let content_key: SteelVal = SteelVal::SymbolV("content".into());
-
-    // Create string values
-    let filepath_val: SteelVal = filename.to_string().into_steelval().unwrap();
-    let title_val: SteelVal = post.title.clone().into_steelval().unwrap();
-    let date_val: SteelVal = post.date.clone().into_steelval().unwrap();
-    let content_val: SteelVal = post.content_html.clone().into_steelval().unwrap();
-
-    // Create a Rust HashMap and populate it
-    let mut map: HashMap<SteelVal, SteelVal> = HashMap::new();
-    map.insert(filepath_key, filepath_val);
-    map.insert(title_key, title_val);
-    map.insert(date_key, date_val);
-    map.insert(content_key, content_val);
-
-    // Convert to Steel hash map using Gc and SteelHashMap
-    let steel_map = SteelHashMap::from(Gc::new(map));
-
-    // Return as a SteelVal
-    SteelVal::HashMapV(steel_map)
-}
 
 /// Sets up the build environment and initializes the Steel engine with site configuration
 fn setup_build_environment() -> Result<Engine, Box<dyn std::error::Error>> {
@@ -122,7 +91,7 @@ fn parse_all_posts() -> Result<Vec<(String, SteelVal)>, Box<dyn std::error::Erro
             let post = post::parse_post_file(path.to_str().unwrap(), &content)?;
 
             let filename = path.file_stem().unwrap().to_str().unwrap();
-            let post_hash = post_to_steel_hash(filename, &post);
+            let post_hash = post::post_to_steel_hash(filename, &post);
 
             posts_data.push((filename.to_string(), post_hash));
         }

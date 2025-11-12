@@ -1,4 +1,7 @@
 use serde::Deserialize;
+use steel::rvals::{SteelVal, IntoSteelVal, SteelHashMap};
+use steel::gc::Gc;
+use steel::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Post {
@@ -46,6 +49,35 @@ pub fn parse_post_file(file_path: &str, content: &str) -> Result<Post, String> {
         content_html,
         file_path: file_path.to_string(),
     })
+}
+
+/// Convert a Post to a SteelVal hash table
+/// Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
+pub fn post_to_steel_hash(filename: &str, post: &Post) -> SteelVal {
+    // Create symbol for keys
+    let filepath_key: SteelVal = SteelVal::SymbolV("filepath".into());
+    let title_key: SteelVal = SteelVal::SymbolV("title".into());
+    let date_key: SteelVal = SteelVal::SymbolV("date".into());
+    let content_key: SteelVal = SteelVal::SymbolV("content".into());
+
+    // Create string values
+    let filepath_val: SteelVal = filename.to_string().into_steelval().unwrap();
+    let title_val: SteelVal = post.title.clone().into_steelval().unwrap();
+    let date_val: SteelVal = post.date.clone().into_steelval().unwrap();
+    let content_val: SteelVal = post.content_html.clone().into_steelval().unwrap();
+
+    // Create a Rust HashMap and populate it
+    let mut map: HashMap<SteelVal, SteelVal> = HashMap::new();
+    map.insert(filepath_key, filepath_val);
+    map.insert(title_key, title_val);
+    map.insert(date_key, date_val);
+    map.insert(content_key, content_val);
+
+    // Convert to Steel hash map using Gc and SteelHashMap
+    let steel_map = SteelHashMap::from(Gc::new(map));
+
+    // Return as a SteelVal
+    SteelVal::HashMapV(steel_map)
 }
 
 #[cfg(test)]

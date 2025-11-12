@@ -1,13 +1,8 @@
 # Bower Template Guide
 
-## Why S-Expressions?
+## S-Expression Templates
 
-Bower uses Scheme s-expressions for templates because they offer:
-
-- **Elegance**: Templates look almost like HTML, but with the full power of a programming language
-- **Composability**: Build complex layouts from simple, reusable functions
-- **Type Safety**: Templates are data structures, not strings
-- **No String Concatenation**: No risk of XSS or malformed HTML
+Bower uses Scheme s-expressions for HTML templates. Templates are data structures that compose into complex layouts without string concatenation.
 
 ## Quasiquote Syntax
 
@@ -148,17 +143,14 @@ Build reusable components as functions:
 
 ```scheme
 (define (render-post post)
-  (let ((title (alist-get post 'title))
-        (date (alist-get post 'date))
-        (author (alist-get post 'author)))
+  (let ((title (hash-ref post 'title))
+        (date (hash-ref post 'date))
+        (content (hash-ref post 'content)))
     `(article
-      (header
-        (h1 ,title)
-        (div ((class "meta"))
-          (time ,date)
-          (span ,author)))
+      (h1 ,title)
+      (time ,date)
       (div ((class "content"))
-        ,(alist-get post 'content)))))
+        ,content))))
 ```
 
 ### 3. Conditional Rendering
@@ -225,9 +217,31 @@ Build reusable components as functions:
            posts)))
 ```
 
-## Comparison to Other Template Languages
+## Accessing Post Data
 
-### JSX (React)
+Posts are passed as hash tables. Access fields with `hash-ref`:
+
+```scheme
+(define (render-post post)
+  (let ((title (hash-ref post 'title))
+        (date (hash-ref post 'date))
+        (filepath (hash-ref post 'filepath))
+        (content (hash-ref post 'content)))
+    `(article
+      (h1 ,title)
+      (time ,date)
+      (div ((class "content")) ,content))))
+```
+
+Available post fields:
+- `'title` - Post title from frontmatter
+- `'date` - ISO 8601 date string
+- `'filepath` - Filename without extension
+- `'content` - Rendered HTML content
+
+## Comparison to Other Languages
+
+JSX (React):
 ```jsx
 <div className="card">
   <h1>{title}</h1>
@@ -235,29 +249,13 @@ Build reusable components as functions:
 </div>
 ```
 
-### Bower (Scheme)
+Bower (Scheme):
 ```scheme
 `(div ((class "card"))
   (h1 ,title)
   (p ,content))
 ```
 
-### Hiccup (Clojure)
-```clojure
-[:div {:class "card"}
-  [:h1 title]
-  [:p content]]
-```
+## Examples
 
-### Bower (Scheme)
-```scheme
-`(div ((class "card"))
-  (h1 ,title)
-  (p ,content))
-```
-
-## Next Steps
-
-- Check out `example/site.scm` for a working example
-- See `example/advanced-template.scm` for component patterns
-- Read the main README for full documentation
+See `example/site.scm` for a complete working example.

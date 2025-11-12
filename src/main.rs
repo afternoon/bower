@@ -3,8 +3,10 @@ mod post;
 mod sexp_html;
 
 use steel::steel_vm::engine::Engine;
-use steel::rvals::{SteelString, SteelVal, IntoSteelVal};
+use steel::rvals::{SteelString, SteelVal, IntoSteelVal, SteelHashMap};
 use steel::steel_vm::register_fn::RegisterFn;
+use steel::gc::Gc;
+use steel::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -31,9 +33,9 @@ fn displayln_steel(s: SteelString) {
     println!("{}", s.as_str());
 }
 
-// Convert a Post to a SteelVal association list
-// Creates: '((filepath "...") (title "...") (date "...") (content "..."))
-fn post_to_steel_alist(filename: &str, post: &post::Post) -> SteelVal {
+// Convert a Post to a SteelVal hash table
+// Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
+fn post_to_steel_hash(filename: &str, post: &post::Post) -> SteelVal {
     // Create symbol for keys
     let filepath_key: SteelVal = SteelVal::SymbolV("filepath".into());
     let title_key: SteelVal = SteelVal::SymbolV("title".into());
@@ -46,14 +48,18 @@ fn post_to_steel_alist(filename: &str, post: &post::Post) -> SteelVal {
     let date_val: SteelVal = post.date.clone().into_steelval().unwrap();
     let content_val: SteelVal = post.content_html.clone().into_steelval().unwrap();
 
-    // Create pairs (key value)
-    let filepath_pair = vec![filepath_key, filepath_val].into_steelval().unwrap();
-    let title_pair = vec![title_key, title_val].into_steelval().unwrap();
-    let date_pair = vec![date_key, date_val].into_steelval().unwrap();
-    let content_pair = vec![content_key, content_val].into_steelval().unwrap();
+    // Create a Rust HashMap and populate it
+    let mut map: HashMap<SteelVal, SteelVal> = HashMap::new();
+    map.insert(filepath_key, filepath_val);
+    map.insert(title_key, title_val);
+    map.insert(date_key, date_val);
+    map.insert(content_key, content_val);
 
-    // Create the association list
-    vec![filepath_pair, title_pair, date_pair, content_pair].into_steelval().unwrap()
+    // Convert to Steel hash map using Gc and SteelHashMap
+    let steel_map = SteelHashMap::from(Gc::new(map));
+
+    // Return as a SteelVal
+    SteelVal::HashMapV(steel_map)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -84,10 +90,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let site_scm_static: &'static str = Box::leak(site_scm.into_boxed_str());
     engine.run(site_scm_static)?;
 
-    // Read site configuration
-    let config_result = engine.run("site")?;
-    println!("Site configuration loaded: {:?}\n", config_result);
-
     // Process posts - collect all post data first
     let posts_dir = "posts";
     let post_files = fs::read_dir(posts_dir)?;
@@ -105,15 +107,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let post = post::parse_post_file(path.to_str().unwrap(), &content)?;
 
             let filename = path.file_stem().unwrap().to_str().unwrap();
-            let post_alist = post_to_steel_alist(filename, &post);
+            let post_hash = post_to_steel_hash(filename, &post);
 
-            posts_data.push((filename.to_string(), post_alist));
+            posts_data.push((filename.to_string(), post_hash));
         }
     }
-
-    // Get site config as a SteelVal
-    let site_config = engine.run("site")?.into_iter().next()
-        .ok_or("Failed to get site config")?;
 
     // Batch render all posts with a single Steel call
     if !posts_data.is_empty() {
@@ -123,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_steelval()
             .unwrap();
 
-        match engine.call_function_by_name_with_args("render-all-posts", vec![site_config.clone(), posts_list]) {
+        match engine.call_function_by_name_with_args("render-all-posts", vec![posts_list]) {
             Ok(result) => {
                 // result is a list of (filepath html-sexp) 2-element lists
                 if let SteelVal::ListV(items) = &result {
@@ -163,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     // Call render-full-index with strongly-typed arguments
-    match engine.call_function_by_name_with_args("render-full-index", vec![site_config.clone(), index_posts_list]) {
+    match engine.call_function_by_name_with_args("render-full-index", vec![index_posts_list]) {
         Ok(index_sexp) => {
             let full_html = format!("<!DOCTYPE html>\n{}", sexp_html::sexp_to_html(&index_sexp));
             fs::write("build/index.html", &full_html)?;

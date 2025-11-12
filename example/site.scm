@@ -1,36 +1,25 @@
 ;; Site configuration for Bower example
-(define site
-  '(site
-    (title "Ben Godfrey")
-    (description "Hi, I'm Ben Godfrey. I'm an Engineering Manager at Meta. I like to make things.")))
-
-;; Helper to get values from association list
-(define (alist-get lst key)
-  (if (null? lst)
-      #f
-      (if (equal? (car (car lst)) key)
-          (car (cdr (car lst)))
-          (alist-get (cdr lst) key))))
+(define title "Ben Godfrey")
+(define description "Hi, I'm Ben Godfrey. I'm an Engineering Manager at Meta. I like to make things.")
 
 ;; Render a complete HTML page
-(define (render-page config content)
-  (let ((title (alist-get (cdr config) 'title)))
-    `(html ((lang "en"))
-      (head
-        (meta ((charset "utf-8")))
-        (meta ((name "viewport") (content "width=device-width, initial-scale=1")))
-        (title ,title))
-      (body
-        (header
-          (h1 ,title))
-        (main
-          ,content)))))
+(define (render-page content)
+  `(html ((lang "en"))
+    (head
+      (meta ((charset "utf-8")))
+      (meta ((name "viewport") (content "width=device-width, initial-scale=1")))
+      (title ,title))
+    (body
+      (header
+        (h1 ,title))
+      (main
+        ,content))))
 
 ;; Render a blog post
-(define (render-post config post)
-  (let ((post-title (alist-get post 'title))
-        (post-date (alist-get post 'date))
-        (post-content (alist-get post 'content)))
+(define (render-post post)
+  (let ((post-title (hash-ref post 'title))
+        (post-date (hash-ref post 'date))
+        (post-content (hash-ref post 'content)))
     `(article
       (h2 ,post-title)
       (time ((datetime ,post-date)) ,post-date)
@@ -39,31 +28,31 @@
 
 ;; Render a single post item for the index
 (define (render-post-item post)
-  (let ((filepath (alist-get post 'filepath))
-        (title (alist-get post 'title))
-        (date (alist-get post 'date)))
+  (let ((filepath (hash-ref post 'filepath))
+        (title (hash-ref post 'title))
+        (date (hash-ref post 'date)))
     `(li
       (a ((href ,(string-append filepath ".html"))) ,title)
       " - "
       ,date)))
 
 ;; Render the index page with a list of posts
-(define (render-index config posts)
+(define (render-index posts)
   `(div
     (h2 "All Posts")
     (ul ,@(map render-post-item posts))))
 
 ;; Render a complete post (post wrapped in page template)
-(define (render-full-post config post)
-  (render-page config (render-post config post)))
+(define (render-full-post post)
+  (render-page (render-post post)))
 
 ;; Render a complete index page (index wrapped in page template)
-(define (render-full-index config posts)
-  (render-page config (render-index config posts)))
+(define (render-full-index posts)
+  (render-page (render-index posts)))
 
 ;; Batch render all posts - returns a list of (filepath html-sexp) pairs
-(define (render-all-posts config posts)
+(define (render-all-posts posts)
   (map (lambda (post)
-         (let ((filepath (alist-get post 'filepath)))
-           (list filepath (render-full-post config post))))
+         (let ((filepath (hash-ref post 'filepath)))
+           (list filepath (render-full-post post))))
        posts))

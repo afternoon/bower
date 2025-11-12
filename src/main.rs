@@ -3,8 +3,10 @@ mod post;
 mod sexp_html;
 
 use steel::steel_vm::engine::Engine;
-use steel::rvals::{SteelString, SteelVal, IntoSteelVal};
+use steel::rvals::{SteelString, SteelVal, IntoSteelVal, SteelHashMap};
 use steel::steel_vm::register_fn::RegisterFn;
+use steel::gc::Gc;
+use steel::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -33,7 +35,7 @@ fn displayln_steel(s: SteelString) {
 
 // Convert a Post to a SteelVal hash table
 // Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
-fn post_to_steel_hash(engine: &mut Engine, filename: &str, post: &post::Post) -> SteelVal {
+fn post_to_steel_hash(filename: &str, post: &post::Post) -> SteelVal {
     // Create symbol for keys
     let filepath_key: SteelVal = SteelVal::SymbolV("filepath".into());
     let title_key: SteelVal = SteelVal::SymbolV("title".into());
@@ -46,17 +48,18 @@ fn post_to_steel_hash(engine: &mut Engine, filename: &str, post: &post::Post) ->
     let date_val: SteelVal = post.date.clone().into_steelval().unwrap();
     let content_val: SteelVal = post.content_html.clone().into_steelval().unwrap();
 
-    // Create the hash table by calling Steel's hash function
-    // hash takes alternating key-value arguments
-    let args = vec![
-        filepath_key, filepath_val,
-        title_key, title_val,
-        date_key, date_val,
-        content_key, content_val,
-    ];
+    // Create a Rust HashMap and populate it
+    let mut map: HashMap<SteelVal, SteelVal> = HashMap::new();
+    map.insert(filepath_key, filepath_val);
+    map.insert(title_key, title_val);
+    map.insert(date_key, date_val);
+    map.insert(content_key, content_val);
 
-    engine.call_function_by_name_with_args("hash", args)
-        .expect("Failed to create hash table")
+    // Convert to Steel hash map using Gc and SteelHashMap
+    let steel_map = SteelHashMap::from(Gc::new(map));
+
+    // Return as a SteelVal
+    SteelVal::HashMapV(steel_map)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -108,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let post = post::parse_post_file(path.to_str().unwrap(), &content)?;
 
             let filename = path.file_stem().unwrap().to_str().unwrap();
-            let post_hash = post_to_steel_hash(&mut engine, filename, &post);
+            let post_hash = post_to_steel_hash(filename, &post);
 
             posts_data.push((filename.to_string(), post_hash));
         }

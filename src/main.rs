@@ -31,9 +31,9 @@ fn displayln_steel(s: SteelString) {
     println!("{}", s.as_str());
 }
 
-// Convert a Post to a SteelVal association list
-// Creates: '((filepath "...") (title "...") (date "...") (content "..."))
-fn post_to_steel_alist(filename: &str, post: &post::Post) -> SteelVal {
+// Convert a Post to a SteelVal hash table
+// Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
+fn post_to_steel_hash(engine: &mut Engine, filename: &str, post: &post::Post) -> SteelVal {
     // Create symbol for keys
     let filepath_key: SteelVal = SteelVal::SymbolV("filepath".into());
     let title_key: SteelVal = SteelVal::SymbolV("title".into());
@@ -46,14 +46,17 @@ fn post_to_steel_alist(filename: &str, post: &post::Post) -> SteelVal {
     let date_val: SteelVal = post.date.clone().into_steelval().unwrap();
     let content_val: SteelVal = post.content_html.clone().into_steelval().unwrap();
 
-    // Create pairs (key value)
-    let filepath_pair = vec![filepath_key, filepath_val].into_steelval().unwrap();
-    let title_pair = vec![title_key, title_val].into_steelval().unwrap();
-    let date_pair = vec![date_key, date_val].into_steelval().unwrap();
-    let content_pair = vec![content_key, content_val].into_steelval().unwrap();
+    // Create the hash table by calling Steel's hash function
+    // hash takes alternating key-value arguments
+    let args = vec![
+        filepath_key, filepath_val,
+        title_key, title_val,
+        date_key, date_val,
+        content_key, content_val,
+    ];
 
-    // Create the association list
-    vec![filepath_pair, title_pair, date_pair, content_pair].into_steelval().unwrap()
+    engine.call_function_by_name_with_args("hash", args)
+        .expect("Failed to create hash table")
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -105,9 +108,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let post = post::parse_post_file(path.to_str().unwrap(), &content)?;
 
             let filename = path.file_stem().unwrap().to_str().unwrap();
-            let post_alist = post_to_steel_alist(filename, &post);
+            let post_hash = post_to_steel_hash(&mut engine, filename, &post);
 
-            posts_data.push((filename.to_string(), post_alist));
+            posts_data.push((filename.to_string(), post_hash));
         }
     }
 

@@ -5,14 +5,6 @@
 ;; Keep site variable for backwards compatibility with Rust code
 (define site '())
 
-;; Helper to get values from association list
-(define (alist-get lst key)
-  (if (null? lst)
-      #f
-      (if (equal? (car (car lst)) key)
-          (car (cdr (car lst)))
-          (alist-get (cdr lst) key))))
-
 ;; Render a complete HTML page
 (define (render-page config content)
   `(html ((lang "en"))
@@ -28,9 +20,9 @@
 
 ;; Render a blog post
 (define (render-post config post)
-  (let ((post-title (alist-get post 'title))
-        (post-date (alist-get post 'date))
-        (post-content (alist-get post 'content)))
+  (let ((post-title (hash-ref post 'title))
+        (post-date (hash-ref post 'date))
+        (post-content (hash-ref post 'content)))
     `(article
       (h2 ,post-title)
       (time ((datetime ,post-date)) ,post-date)
@@ -39,9 +31,9 @@
 
 ;; Render a single post item for the index
 (define (render-post-item post)
-  (let ((filepath (alist-get post 'filepath))
-        (title (alist-get post 'title))
-        (date (alist-get post 'date)))
+  (let ((filepath (hash-ref post 'filepath))
+        (title (hash-ref post 'title))
+        (date (hash-ref post 'date)))
     `(li
       (a ((href ,(string-append filepath ".html"))) ,title)
       " - "
@@ -64,6 +56,6 @@
 ;; Batch render all posts - returns a list of (filepath html-sexp) pairs
 (define (render-all-posts config posts)
   (map (lambda (post)
-         (let ((filepath (alist-get post 'filepath)))
+         (let ((filepath (hash-ref post 'filepath)))
            (list filepath (render-full-post config post))))
        posts))

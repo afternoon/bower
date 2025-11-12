@@ -3,35 +3,11 @@ mod post;
 mod sexp_html;
 
 use steel::steel_vm::engine::Engine;
-use steel::rvals::{SteelString, SteelVal, IntoSteelVal, SteelHashMap};
-use steel::steel_vm::register_fn::RegisterFn;
+use steel::rvals::{SteelVal, IntoSteelVal, SteelHashMap};
 use steel::gc::Gc;
 use steel::HashMap;
 use std::fs;
 use std::path::Path;
-
-// Wrapper function that works with Steel types
-fn markdown_to_html_steel(input: SteelString) -> String {
-    markdown::markdown_to_html(input.as_str())
-}
-
-// Read a file's contents as a string
-fn read_file_steel(path: SteelString) -> Result<String, String> {
-    fs::read_to_string(path.as_str())
-        .map_err(|e| format!("Failed to read file {}: {}", path.as_str(), e))
-}
-
-// Write content to a file
-fn write_file_steel(path: SteelString, content: SteelString) -> Result<String, String> {
-    fs::write(path.as_str(), content.as_str())
-        .map(|_| format!("Written to {}", path.as_str()))
-        .map_err(|e| format!("Failed to write file {}: {}", path.as_str(), e))
-}
-
-// Symbol to string (in Steel, we'll just pass strings)
-fn displayln_steel(s: SteelString) {
-    println!("{}", s.as_str());
-}
 
 // Convert a Post to a SteelVal hash table
 // Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
@@ -70,12 +46,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create Steel engine
     let mut engine = Engine::new();
-
-    // Register helper functions (keeping them for potential use in site.scm)
-    engine.register_fn("markdown->html", markdown_to_html_steel);
-    engine.register_fn("read-file", read_file_steel);
-    engine.register_fn("write-file", write_file_steel);
-    engine.register_fn("displayln", displayln_steel);
 
     // Load site.scm
     let site_scm_path = "site.scm";

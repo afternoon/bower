@@ -55,10 +55,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let site_scm = fs::read_to_string(site_scm_path)?;
+
+    // Check which helper functions are missing from site.scm and inject them
+    let has_render_full_post = site_scm.contains("(define (render-full-post");
+    let has_render_full_index = site_scm.contains("(define (render-full-index");
+    let has_render_all_posts = site_scm.contains("(define (render-all-posts");
+
+    let mut helpers = String::new();
+
+    if !has_render_full_post {
+        helpers.push_str(r#"
+(define (render-full-post post)
+  (render-page (render-post post)))
+"#);
+    }
+
+    if !has_render_full_index {
+        helpers.push_str(r#"
+(define (render-full-index posts)
+  (render-page (render-index posts)))
+"#);
+    }
+
+    if !has_render_all_posts {
+        helpers.push_str(r#"
+(define (render-all-posts posts)
+  (map (lambda (post)
+         (list (hash-ref post 'filepath)
+               (render-full-post post)))
+       posts))
+"#);
+    }
+
+    // Concatenate site.scm with needed Bower helpers
+    let combined = format!("{}{}", site_scm, helpers);
+
     // Note: Box::leak is used here because Steel's engine requires 'static lifetime.
     // This is only done once at startup, so it doesn't impact performance.
-    let site_scm_static: &'static str = Box::leak(site_scm.into_boxed_str());
-    engine.run(site_scm_static)?;
+    let combined_static: &'static str = Box::leak(combined.into_boxed_str());
+    engine.run(combined_static)?;
 
     // Process posts - collect all post data first
     let posts_dir = "posts";

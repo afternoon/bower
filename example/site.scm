@@ -41,18 +41,3 @@
   `(div
     (h2 "All Posts")
     (ul ,@(map render-post-item posts))))
-
-;; Render a complete post (post wrapped in page template)
-(define (render-full-post post)
-  (render-page (render-post post)))
-
-;; Render a complete index page (index wrapped in page template)
-(define (render-full-index posts)
-  (render-page (render-index posts)))
-
-;; Batch render all posts - returns a list of (filepath html-sexp) pairs
-(define (render-all-posts posts)
-  (map (lambda (post)
-         (let ((filepath (hash-ref post 'filepath)))
-           (list filepath (render-full-post post))))
-       posts))

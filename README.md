@@ -12,7 +12,7 @@ A static site generator using Steel Scheme and Rust. Markdown parsing in Rust, t
 ## Building
 
 ```bash
-cargo build --release
+cargo build
 ```
 
 ## Usage
@@ -20,12 +20,12 @@ cargo build --release
 1. Create a `site.scm` file with your site configuration and rendering functions:
 
 ```scheme
-;; Site metadata as simple variables
+; Site metadata as simple variables
 (define title "My Site")
 (define description "Welcome to my site")
 
-;; Render a complete HTML page
-(define (render-page content)
+; Render a complete HTML page
+(define (page content)
   `(html ((lang "en"))
     (head
       (meta ((charset "utf-8")))
@@ -37,17 +37,29 @@ cargo build --release
       (main
         ,content))))
 
-;; Render a blog post
-;; Post is a hash table with keys: 'title, 'date, 'content, 'filepath
-(define (render-post post)
-  (let ((post-title (hash-ref post 'title))
-        (post-date (hash-ref post 'date))
-        (post-content (hash-ref post 'content)))
+; Render a blog post
+; `post-metadata` is a hash table with keys: 'title, 'date, 'content, 'id
+(define (post post-title post-date post-content post-metadata)
+  (page
     `(article
       (h2 ,post-title)
       (time ((datetime ,post-date)) ,post-date)
       (div ((class "content"))
         ,post-content))))
+
+; Render an index page
+(define (index posts)
+  (page
+    `(div
+      (h1 ,title)
+      (section
+        ,@(map (lambda (post)
+                 (let ([post-title (hash-ref post 'title)]
+                       [post-id (hash-ref post 'id)])
+                   `(li ((class "mb-2"))
+                     (a ((href ,(string-append "posts/" post-id "/")))
+                       ,post-title))))
+               posts)))))
 ```
 
 2. Create posts in a `posts/` directory with YAML frontmatter:
@@ -101,10 +113,10 @@ This will process the posts in `example/posts/` and generate HTML files in `buil
 3. For each post:
    - Parse YAML frontmatter
    - Convert markdown to HTML
-   - Create hash table with post data (`title`, `date`, `content`, `filepath`)
-   - Call `render-post` and `render-page` functions
+   - Create hash table with post metadata (`title`, `date`, `content`, `id`, ...)
+   - Call `post` and `page` functions
    - Convert s-expression result to HTML
-   - Write to `build/{filename}.html`
+   - Write to `build/posts/{filename}/index.html`
 4. Generate `index.html` listing all posts
 
 ## Template Syntax

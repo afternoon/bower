@@ -1,8 +1,9 @@
 ;; Site configuration for Bower example
-(define site
-  '(site
-    (title "Ben Godfrey")
-    (description "Hi, I'm Ben Godfrey. I'm an Engineering Manager at Meta. I like to make things.")))
+(define title "Ben Godfrey")
+(define description "Hi, I'm Ben Godfrey. I'm an Engineering Manager at Meta. I like to make things.")
+
+;; Keep site variable for backwards compatibility with Rust code
+(define site '())
 
 ;; Helper to get values from association list
 (define (alist-get lst key)
@@ -14,17 +15,16 @@
 
 ;; Render a complete HTML page
 (define (render-page config content)
-  (let ((title (alist-get (cdr config) 'title)))
-    `(html ((lang "en"))
-      (head
-        (meta ((charset "utf-8")))
-        (meta ((name "viewport") (content "width=device-width, initial-scale=1")))
-        (title ,title))
-      (body
-        (header
-          (h1 ,title))
-        (main
-          ,content)))))
+  `(html ((lang "en"))
+    (head
+      (meta ((charset "utf-8")))
+      (meta ((name "viewport") (content "width=device-width, initial-scale=1")))
+      (title ,title))
+    (body
+      (header
+        (h1 ,title))
+      (main
+        ,content))))
 
 ;; Render a blog post
 (define (render-post config post)

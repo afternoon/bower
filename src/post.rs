@@ -5,6 +5,7 @@ pub struct Post {
     pub title: String,
     pub date: String,
     pub content_html: String,
+    #[allow(dead_code)]
     pub file_path: String,
 }
 

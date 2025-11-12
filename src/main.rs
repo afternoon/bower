@@ -9,6 +9,25 @@ use steel::HashMap;
 use std::fs;
 use std::path::Path;
 
+// Default helper functions injected into site.scm if not already defined
+const HELPER_RENDER_FULL_POST: &str = r#"
+(define (render-full-post post)
+  (render-page (render-post post)))
+"#;
+
+const HELPER_RENDER_FULL_INDEX: &str = r#"
+(define (render-full-index posts)
+  (render-page (render-index posts)))
+"#;
+
+const HELPER_RENDER_ALL_POSTS: &str = r#"
+(define (render-all-posts posts)
+  (map (lambda (post)
+         (list (hash-ref post 'filepath)
+               (render-full-post post)))
+       posts))
+"#;
+
 // Convert a Post to a SteelVal hash table
 // Creates: (hash 'filepath "..." 'title "..." 'date "..." 'content "...")
 fn post_to_steel_hash(filename: &str, post: &post::Post) -> SteelVal {
@@ -63,27 +82,15 @@ fn setup_build_environment() -> Result<Engine, Box<dyn std::error::Error>> {
     let mut helpers = String::new();
 
     if !has_render_full_post {
-        helpers.push_str(r#"
-(define (render-full-post post)
-  (render-page (render-post post)))
-"#);
+        helpers.push_str(HELPER_RENDER_FULL_POST);
     }
 
     if !has_render_full_index {
-        helpers.push_str(r#"
-(define (render-full-index posts)
-  (render-page (render-index posts)))
-"#);
+        helpers.push_str(HELPER_RENDER_FULL_INDEX);
     }
 
     if !has_render_all_posts {
-        helpers.push_str(r#"
-(define (render-all-posts posts)
-  (map (lambda (post)
-         (list (hash-ref post 'filepath)
-               (render-full-post post)))
-       posts))
-"#);
+        helpers.push_str(HELPER_RENDER_ALL_POSTS);
     }
 
     // Concatenate site.scm with needed Bower helpers

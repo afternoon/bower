@@ -2,9 +2,6 @@
 (define title "Ben Godfrey")
 (define description "Hi, I'm Ben Godfrey. I'm an Engineering Manager at Meta. I like to make things.")
 
-;; Keep site variable for backwards compatibility with Rust code
-(define site '())
-
 ;; Render a complete HTML page
 (define (render-page config content)
   `(html ((lang "en"))

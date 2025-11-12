@@ -90,10 +90,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let site_scm_static: &'static str = Box::leak(site_scm.into_boxed_str());
     engine.run(site_scm_static)?;
 
-    // Read site configuration
-    let config_result = engine.run("site")?;
-    println!("Site configuration loaded: {:?}\n", config_result);
-
     // Process posts - collect all post data first
     let posts_dir = "posts";
     let post_files = fs::read_dir(posts_dir)?;
@@ -117,9 +113,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Get site config as a SteelVal
-    let site_config = engine.run("site")?.into_iter().next()
-        .ok_or("Failed to get site config")?;
+    // Create empty config (config parameter is not used but required by function signatures)
+    let site_config = engine.run("'()")?.into_iter().next()
+        .ok_or("Failed to create empty config")?;
 
     // Batch render all posts with a single Steel call
     if !posts_data.is_empty() {

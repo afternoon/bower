@@ -24,9 +24,6 @@ cargo build --release
 (define title "My Site")
 (define description "Welcome to my site")
 
-;; Required for compatibility
-(define site '())
-
 ;; Render a complete HTML page
 (define (render-page config content)
   `(html ((lang "en"))

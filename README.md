@@ -25,7 +25,7 @@ cargo build --release
 (define description "Welcome to my site")
 
 ;; Render a complete HTML page
-(define (render-page config content)
+(define (render-page content)
   `(html ((lang "en"))
     (head
       (meta ((charset "utf-8")))
@@ -39,7 +39,7 @@ cargo build --release
 
 ;; Render a blog post
 ;; Post is a hash table with keys: 'title, 'date, 'content, 'filepath
-(define (render-post config post)
+(define (render-post post)
   (let ((post-title (hash-ref post 'title))
         (post-date (hash-ref post 'date))
         (post-content (hash-ref post 'content)))

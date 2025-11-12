@@ -113,10 +113,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Create empty config (config parameter is not used but required by function signatures)
-    let site_config = engine.run("'()")?.into_iter().next()
-        .ok_or("Failed to create empty config")?;
-
     // Batch render all posts with a single Steel call
     if !posts_data.is_empty() {
         let posts_list: SteelVal = posts_data.iter()
@@ -125,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_steelval()
             .unwrap();
 
-        match engine.call_function_by_name_with_args("render-all-posts", vec![site_config.clone(), posts_list]) {
+        match engine.call_function_by_name_with_args("render-all-posts", vec![posts_list]) {
             Ok(result) => {
                 // result is a list of (filepath html-sexp) 2-element lists
                 if let SteelVal::ListV(items) = &result {
@@ -165,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     // Call render-full-index with strongly-typed arguments
-    match engine.call_function_by_name_with_args("render-full-index", vec![site_config.clone(), index_posts_list]) {
+    match engine.call_function_by_name_with_args("render-full-index", vec![index_posts_list]) {
         Ok(index_sexp) => {
             let full_html = format!("<!DOCTYPE html>\n{}", sexp_html::sexp_to_html(&index_sexp));
             fs::write("build/index.html", &full_html)?;

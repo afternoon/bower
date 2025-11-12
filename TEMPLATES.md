@@ -147,10 +147,8 @@ Build reusable components as functions:
         (date (hash-ref post 'date))
         (content (hash-ref post 'content)))
     `(article
-      (header
-        (h1 ,title)
-        (div ((class "meta"))
-          (time ,date)))
+      (h1 ,title)
+      (time ,date)
       (div ((class "content"))
         ,content))))
 ```
@@ -224,7 +222,7 @@ Build reusable components as functions:
 Posts are passed as hash tables. Access fields with `hash-ref`:
 
 ```scheme
-(define (render-post config post)
+(define (render-post post)
   (let ((title (hash-ref post 'title))
         (date (hash-ref post 'date))
         (filepath (hash-ref post 'filepath))

@@ -3,7 +3,7 @@
 (define description "Hi, I'm Ben Godfrey. I'm an Engineering Manager at Meta. I like to make things.")
 
 ;; Render a complete HTML page
-(define (render-page config content)
+(define (render-page content)
   `(html ((lang "en"))
     (head
       (meta ((charset "utf-8")))
@@ -16,7 +16,7 @@
         ,content))))
 
 ;; Render a blog post
-(define (render-post config post)
+(define (render-post post)
   (let ((post-title (hash-ref post 'title))
         (post-date (hash-ref post 'date))
         (post-content (hash-ref post 'content)))
@@ -37,22 +37,22 @@
       ,date)))
 
 ;; Render the index page with a list of posts
-(define (render-index config posts)
+(define (render-index posts)
   `(div
     (h2 "All Posts")
     (ul ,@(map render-post-item posts))))
 
 ;; Render a complete post (post wrapped in page template)
-(define (render-full-post config post)
-  (render-page config (render-post config post)))
+(define (render-full-post post)
+  (render-page (render-post post)))
 
 ;; Render a complete index page (index wrapped in page template)
-(define (render-full-index config posts)
-  (render-page config (render-index config posts)))
+(define (render-full-index posts)
+  (render-page (render-index posts)))
 
 ;; Batch render all posts - returns a list of (filepath html-sexp) pairs
-(define (render-all-posts config posts)
+(define (render-all-posts posts)
   (map (lambda (post)
          (let ((filepath (hash-ref post 'filepath)))
-           (list filepath (render-full-post config post))))
+           (list filepath (render-full-post post))))
        posts))

@@ -1,13 +1,28 @@
 use steel::rvals::SteelVal;
 
+/// HTML5 void elements: self-closing, never have a closing tag or children.
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+
+/// Escape text so it's safe to place between tags or inside a quoted attribute value.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 /// Convert a Steel s-expression (SteelVal) to HTML string
 pub fn sexp_to_html(sexp: &SteelVal) -> String {
     match sexp {
-        SteelVal::StringV(s) => s.to_string(),
+        SteelVal::StringV(s) => html_escape(s),
         SteelVal::IntV(n) => n.to_string(),
         SteelVal::NumV(n) => n.to_string(),
         SteelVal::BoolV(b) => b.to_string(),
-        SteelVal::SymbolV(s) => s.to_string(),
+        SteelVal::SymbolV(s) => html_escape(&s.to_string()),
         SteelVal::ListV(list) => {
             if list.is_empty() {
                 return String::new();
@@ -19,6 +34,19 @@ pub fn sexp_to_html(sexp: &SteelVal) -> String {
             // First element should be the tag name
             if let Some(SteelVal::SymbolV(tag)) = items.get(0) {
                 let tag_name = tag.to_string();
+
+                // `(raw-html "...")` emits its (single) string argument verbatim,
+                // with no escaping - used for pre-rendered markdown/HTML content.
+                if tag_name == "raw-html" {
+                    return items[1..]
+                        .iter()
+                        .map(|child| match child {
+                            SteelVal::StringV(s) => s.to_string(),
+                            other => sexp_to_html(other),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
+                }
 
                 // Check if second element is attributes (list of lists)
                 let (has_attrs, attr_html) = if items.len() > 1 {
@@ -35,6 +63,10 @@ pub fn sexp_to_html(sexp: &SteelVal) -> String {
                 } else {
                     (false, String::new())
                 };
+
+                if VOID_ELEMENTS.contains(&tag_name.as_str()) {
+                    return format!("<{}{}>", tag_name, attr_html);
+                }
 
                 // Get children (skip tag and optionally attributes)
                 let children_start = if has_attrs { 2 } else { 1 };
@@ -86,8 +118,8 @@ fn attrs_to_html(attrs: &[&SteelVal]) -> String {
                         _ => return None,
                     };
                     let value = match pair_vec[1] {
-                        SteelVal::StringV(s) => s.to_string(),
-                        SteelVal::SymbolV(s) => s.to_string(),
+                        SteelVal::StringV(s) => html_escape(s),
+                        SteelVal::SymbolV(s) => html_escape(&s.to_string()),
                         SteelVal::IntV(n) => n.to_string(),
                         _ => return None,
                     };

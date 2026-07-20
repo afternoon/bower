@@ -17,12 +17,15 @@ cargo build
 
 ## Usage
 
-1. Create a `site.scm` file with your site configuration and rendering functions:
+1. Create a `site.scm` file with your site configuration and rendering functions. Bower
+   calls two functions directly: `post` to render each post page, and `index` to render
+   the home page.
 
 ```scheme
-; Site metadata as simple variables
+; Site metadata as simple variables. `site-url` is required if you want RSS/sitemap output.
 (define title "My Site")
 (define description "Welcome to my site")
+(define site-url "https://example.com")
 
 ; Render a complete HTML page
 (define (page content)
@@ -37,29 +40,38 @@ cargo build
       (main
         ,content))))
 
-; Render a blog post
-; `post-metadata` is a hash table with keys: 'title, 'date, 'content, 'id
+; Render a blog post. Bower calls this as (post title date content post-metadata).
+; `post-metadata` is a hash table - see "Data Structures" below for its keys.
+; `post-content` is pre-rendered HTML from the post's markdown body; wrap it in
+; `raw-html` so it's emitted unescaped rather than as literal text.
 (define (post post-title post-date post-content post-metadata)
   (page
     `(article
       (h2 ,post-title)
       (time ((datetime ,post-date)) ,post-date)
       (div ((class "content"))
-        ,post-content))))
+        (raw-html ,post-content)))))
 
-; Render an index page
-(define (index posts)
+; Render the index page. Bower calls this as (index year-groups), where
+; year-groups is a list of (year posts) pairs, newest year first, and each
+; `posts` is a list of post-metadata hash tables for that year.
+(define (index year-groups)
   (page
     `(div
       (h1 ,title)
-      (section
-        ,@(map (lambda (post)
-                 (let ([post-title (hash-ref post 'title)]
-                       [post-id (hash-ref post 'id)])
-                   `(li ((class "mb-2"))
-                     (a ((href ,(string-append "posts/" post-id "/")))
-                       ,post-title))))
-               posts)))))
+      ,@(map (lambda (year-group)
+               (let ([year (car year-group)]
+                     [posts (cadr year-group)])
+                 `(section
+                   (h2 ,year)
+                   (ul ,@(map (lambda (post)
+                                (let ([post-title (hash-ref post 'title)]
+                                      [post-id (hash-ref post 'id)])
+                                  `(li ((class "mb-2"))
+                                    (a ((href ,(string-append "posts/" post-id "/")))
+                                      ,post-title))))
+                              posts)))))
+             year-groups))))
 ```
 
 2. Create posts in a `posts/` directory with YAML frontmatter:
@@ -74,13 +86,17 @@ date: 2025-01-01T12:00:00+00:00
 This is my first post!
 ```
 
-3. Run bower:
+3. Optionally, put static assets (CSS, images, favicon, ...) in a `public/` directory.
+   Everything under `public/` is copied as-is into the build output.
+
+4. Run bower:
 
 ```bash
 cargo run
 ```
 
-4. Your generated site will be in the `build/` directory.
+5. Your generated site will be in the `build/` directory, including `index.html`,
+   `posts/<id>/index.html` for each post, `rss.xml`, and a sitemap.
 
 ## Example
 
@@ -109,15 +125,16 @@ This will process the posts in `example/posts/` and generate HTML files in `buil
 ### Build Process
 
 1. Load `site.scm` into the Steel engine
-2. Parse all `.md` files in `posts/` directory
+2. Parse all `.md` files in `posts/` directory, sorted by date descending
 3. For each post:
-   - Parse YAML frontmatter
-   - Convert markdown to HTML
-   - Create hash table with post metadata (`title`, `date`, `content`, `id`, ...)
-   - Call `post` and `page` functions
-   - Convert s-expression result to HTML
+   - Parse YAML frontmatter (`title`, optional `description`, `date`)
+   - Convert markdown to HTML, syntax-highlighting fenced code blocks
+   - Call `(post title date content post-metadata)`
+   - Convert the returned s-expression to HTML
    - Write to `build/posts/{filename}/index.html`
-4. Generate `index.html` listing all posts
+4. Group posts by year and call `(index year-groups)` to generate `build/index.html`
+5. Generate `build/rss.xml` and `build/sitemap-index.xml`/`build/sitemap-0.xml`
+6. Copy everything under `public/` into `build/`
 
 ## Template Syntax
 
@@ -126,6 +143,10 @@ Templates use Scheme's quasiquote syntax (backtick `` ` `` and comma `,`):
 - `` `(tag-name child1 child2) `` → `<tag-name>child1child2</tag-name>`
 - `` `(tag-name ((attr1 val1)) child) `` → `<tag-name attr1="val1">child</tag-name>`
 - `,variable` splices in the value
+- Text content and attribute values are HTML-escaped automatically
+- `` `(raw-html "<b>...</b>") `` emits its string argument unescaped - use this for
+  pre-rendered HTML, such as a post's markdown-rendered `content`
+- HTML5 void elements (`img`, `br`, `link`, `meta`, ...) are rendered without a closing tag
 
 Example:
 ```scheme
@@ -143,16 +164,19 @@ Produces:
 
 ## Data Structures
 
-Post data is passed as Steel hash tables with the following keys:
-- `'filepath` - filename without extension
+Post metadata is passed as a Steel hash table with the following keys:
+- `'id` - filename without extension, used for the post's URL (`/posts/{id}/`)
 - `'title` - post title from frontmatter
-- `'date` - ISO 8601 date string
-- `'content` - rendered HTML content
+- `'description` - post description from frontmatter, or `""` if absent
+- `'date` - ISO 8601 date string in UTC, e.g. `2004-01-15T05:23:14.000Z`
+- `'date-year` - the post's year as a string, e.g. `"2004"`
+- `'date-display` - the date formatted for display, e.g. `"Jan 15, 2004"`
+- `'content` - rendered HTML content (pass to `raw-html` before splicing into a template)
 
 Access values with `hash-ref`:
 ```scheme
 (hash-ref post 'title)
-(hash-ref post 'date)
+(hash-ref post 'date-display)
 ```
 
 ## License

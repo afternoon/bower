@@ -224,20 +224,24 @@ Posts are passed as hash tables. Access fields with `hash-ref`:
 ```scheme
 (define (render-post post)
   (let ((title (hash-ref post 'title))
-        (date (hash-ref post 'date))
-        (filepath (hash-ref post 'filepath))
+        (date-display (hash-ref post 'date-display))
+        (id (hash-ref post 'id))
         (content (hash-ref post 'content)))
     `(article
       (h1 ,title)
-      (time ,date)
-      (div ((class "content")) ,content))))
+      (time ,date-display)
+      (div ((class "content")) (raw-html ,content)))))
 ```
 
 Available post fields:
+- `'id` - Filename without extension, used for the post's URL (`/posts/{id}/`)
 - `'title` - Post title from frontmatter
-- `'date` - ISO 8601 date string
-- `'filepath` - Filename without extension
-- `'content` - Rendered HTML content
+- `'description` - Post description from frontmatter, or `""` if absent
+- `'date` - ISO 8601 date string in UTC, e.g. `2004-01-15T05:23:14.000Z`
+- `'date-year` - The post's year as a string, e.g. `"2004"`
+- `'date-display` - The date formatted for display, e.g. `"Jan 15, 2004"`
+- `'content` - Rendered HTML content - wrap in `raw-html` before splicing into a template,
+  since template strings are otherwise HTML-escaped
 
 ## Comparison to Other Languages
 

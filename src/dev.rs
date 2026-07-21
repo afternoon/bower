@@ -412,3 +412,126 @@ fn inject_reload_script(html: &str) -> String {
         None => format!("{}{}", html, RELOAD_SCRIPT),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `build::full_build` and `handle_changes` both work against the process's
+    // current directory, so tests that exercise them must not run concurrently.
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "bower-dev-test-{}-{}-{}",
+                name,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn enter(dir: &Path) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(dir).unwrap();
+            CwdGuard { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    fn write_minimal_site(dir: &Path) {
+        fs::write(
+            dir.join("site.scm"),
+            r#"
+(define title "Test Site")
+(define description "A test site")
+(define site-url "https://example.com")
+(define (post post-title post-date post-content post-metadata)
+  `(html (body (h1 ,post-title) (raw-html ,post-content))))
+(define (index year-groups) `(html (body "index")))
+"#,
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("posts")).unwrap();
+    }
+
+    fn write_post(dir: &Path, filename: &str, title: &str) {
+        fs::write(
+            dir.join("posts").join(filename),
+            format!(
+                "---\ntitle: {}\ndate: 2025-01-01T00:00:00+00:00\n---\n# Body\n",
+                title
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn new_post_file_is_parsed_and_rendered() {
+        let _lock = CWD_LOCK.lock().unwrap();
+        let tmp = TempDir::new("new-post");
+        write_minimal_site(tmp.path());
+        write_post(tmp.path(), "existing.md", "Existing Post");
+
+        let _cwd = CwdGuard::enter(tmp.path());
+
+        let (mut engine, mut posts) = build::full_build().expect("initial build");
+        assert_eq!(posts.len(), 1);
+        assert!(Path::new("build/posts/existing/index.html").is_file());
+
+        // Simulate the filesystem watcher observing a brand-new post file
+        // that didn't exist when the dev server started.
+        write_post(tmp.path(), "new-post.md", "New Post");
+        let new_path = tmp.path().join("posts").join("new-post.md");
+
+        let rebuilt = handle_changes(tmp.path(), &mut engine, &mut posts, vec![new_path])
+            .expect("handle_changes");
+
+        assert!(rebuilt, "adding a post file should trigger a rebuild");
+        assert_eq!(posts.len(), 2, "the new post should be added to the in-memory list");
+        assert!(posts.iter().any(|(f, _)| f == "new-post"));
+        assert!(
+            Path::new("build/posts/new-post/index.html").is_file(),
+            "the new post's page should be rendered to build/"
+        );
+        assert!(
+            Path::new("build/posts/existing/index.html").is_file(),
+            "the pre-existing post should be untouched"
+        );
+
+        let index_html = fs::read_to_string("build/index.html").unwrap();
+        assert!(
+            index_html.contains("index"),
+            "index.html should have been regenerated"
+        );
+    }
+}

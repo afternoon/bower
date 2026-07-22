@@ -1,0 +1,111 @@
+=== Realistic code-density scenarios (n=500 posts, median ms) ===
+
+Only LABELED fenced code (```rust) triggers syntect; bare fences (```) are just
+HTML-escaped (see src/markdown.rs:90). So the load depends on both how many
+posts have code AND how many of those use a language hint.
+
+scenario                                total   setup   parse  render_posts
+------------------------------------------------------------------------------
+realistic (10% code, 20% labeled)       441.5    86.0   179.7        156.8
+generous  (10% code, 100% labeled)      569.3    87.2   330.1        142.1
+baseline  (100% code, 2 labeled/post)  1395.4    98.2  1116.9        168.1
+
+Parse share of total:
+  realistic  parse=40.7%   setup=19.5%   render_posts=35.5%
+  generous   parse=58.0%   setup=15.3%   render_posts=25.0%
+  baseline   parse=80.0%   setup= 7.0%   render_posts=12.0%
+
+=== Isolating syntect within parse (n=500) ===
+
+  parse floor (no code, pure markdown):   33.9 ms
+  realistic syntect cost:                145.8 ms  (33% of total)
+  baseline  syntect cost:               1083.1 ms
+
+=== Syntect has a large FIXED first-hit cost, not just linear ===
+
+  20 posts, 0 code:        parse =   2.0 ms
+  20 posts, 20 labeled:    parse = 229.4 ms   (~11.4 ms/highlight -- dominated by warm-up)
+  200 posts, 200 labeled:  parse = 490.5 ms   (~2.35 ms/highlight amortized)
+
+The first highlight pays a big penalty (lazy syntax loading + HighlightLines
+setup); marginal cost once warm is ~1.3 ms/block.
+
+=== Revised prioritisation (for a low-code site) ===
+
+Under realistic assumptions the build splits roughly parse 40% / render_posts
+36% / setup 20%, and total is ~440ms for 500 posts -- fast.
+
+1. render_posts (Steel rendering) is now CO-EQUAL with parse. Parallelizing
+   parsing alone no longer dominates the win; the Steel render loop matters just
+   as much and is harder to parallelize (single &mut Engine).
+2. setup (~86 ms) is now ~20% of total and is pure fixed cost (Steel init +
+   SyntaxSet::load_defaults). For a small/low-code site this is one of the
+   biggest single levers: lazy-init or trim/embed the syntect SyntaxSet so we
+   don't pay to load hundreds of syntaxes when few/none are used.
+3. syntect's first-hit fixed cost means even a handful of code posts costs
+   ~100+ ms. Trimming the embedded SyntaxSet to only bundled languages (or
+   lazy-loading per language) attacks both setup AND this warm-up penalty.
+4. Rayon-parallel parsing is still worthwhile but its payoff shrinks a lot when
+   code is rare -- it's no longer the clear #1.
+
+=== ATTRIBUTION: where syntect's cost actually is (probe, release) ===
+
+  load_defaults_newlines (all 75 syntaxes):   0.88 ms   <- loading is NOT the cost
+  ThemeSet::load_defaults:                     0.79 ms
+  FIRST highlight (rust):                     37.04 ms   <- per-LANGUAGE first use
+  first highlight (python, 2nd lang):         32.05 ms   <- paid again per new language
+  steady-state highlight:                      0.37 ms
+
+Conclusion: the cost is lazy per-language REGEX COMPILATION on first use of each
+language, using the pure-Rust fancy-regex backend (features=["default-fancy"],
+chosen in c779652 to drop the oniguruma C dep). It is ~30-37 ms per DISTINCT
+language, not a function of how many languages are loaded.
+
+=> "Load only K common languages" would NOT help: unused syntaxes are never
+   compiled and already cost ~0. The lever is the regex backend / avoiding
+   repeated first-compiles, not trimming the SyntaxSet.
+
+=== A PRECOMPILED REGEX DUMP IS IMPOSSIBLE (verified in syntect 5.3.0 source) ===
+
+syntect/src/parsing/regex.rs:
+  - Serialize (l.92) writes ONLY self.regex_str (the pattern string).
+  - Deserialize (l.101) calls Regex::new(str), which sets regex: OnceCell::new()
+    -- EMPTY. Doc comment l.26: "regex compilation happens on first use".
+
+So a .packdump stores regex PATTERNS, never compiled regex. load_defaults is
+already loading such a dump (hence 0.88 ms). The 30 ms/language is the OnceCell
+compiling on first use and CANNOT be serialized -- compiled fancy-regex/oniguruma
+state is not serde-serializable. Shipping a dump changes nothing here.
+
+Real levers instead:
+  1. regex-onig backend: compiles syntaxes far faster than fancy-regex (undoes
+     the c779652 no-C-dep win; measure to confirm the delta).
+  2. Warm/parallelize the first-compile: compilation is per-language and the
+     compiled Regex is cached in the &'static SyntaxSet, so with rayon-parallel
+     parsing the ~30 ms/language overlaps across threads instead of serializing.
+  3. Accept it: at 10% code / few languages it's ~100-150 ms total, one-time.
+
+=== RESULT: swapped fancy-regex -> oniguruma (default-onig) ===
+
+Per-language first-highlight compile (probe, release):
+  language     fancy      onig
+  rust        39.2 ms    3.9 ms
+  python      31.0 ms    4.0 ms
+  javascript  42.5 ms    4.7 ms
+  c           28.1 ms    3.4 ms
+  bash        39.7 ms    3.5 ms
+  steady       0.37 ms   0.20 ms
+  => ~8-10x faster syntax compilation.
+
+End-to-end build (n=500, median):
+  scenario                     fancy        onig      speedup
+  realistic (10% code/20% lbl) 442 ms       259 ms    -41%  (parse 180->44 ms)
+  baseline  (100% code)       1395 ms       655 ms    -53%  (parse 1117->387 ms)
+
+Correctness: rendered HTML for the example site is BYTE-IDENTICAL between
+backends (diff -r clean). All 7 unit tests pass.
+
+Cost of the change: reintroduces a C dependency (onig_sys 69.9.3 vendors and
+statically compiles oniguruma). No runtime dylib, but a C compiler is now
+required at build time -- this reverses c779652's motivation. Trade sub-second
+build wins for a heavier/less-portable build toolchain.

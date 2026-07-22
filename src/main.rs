@@ -5,8 +5,55 @@ mod sexp_html;
 use post::Post;
 use std::fs;
 use std::path::Path;
+use std::time::{Duration, Instant};
 use steel::rvals::{IntoSteelVal, SteelVal};
 use steel::steel_vm::engine::Engine;
+
+/// Collects per-phase wall-clock timings for the build. Emits a JSON line to
+/// stderr at the end of the run when `BOWER_PROFILE` is set in the environment,
+/// so an external harness can capture a machine-readable profile. Default
+/// (unprofiled) runs are unaffected.
+#[derive(Default)]
+struct Profile {
+    enabled: bool,
+    phases: Vec<(&'static str, Duration)>,
+    post_count: usize,
+}
+
+impl Profile {
+    fn from_env() -> Self {
+        Profile {
+            enabled: std::env::var_os("BOWER_PROFILE").is_some(),
+            ..Default::default()
+        }
+    }
+
+    /// Times `f`, records it under `name`, and returns its result.
+    fn phase<T>(&mut self, name: &'static str, f: impl FnOnce() -> T) -> T {
+        let start = Instant::now();
+        let result = f();
+        self.phases.push((name, start.elapsed()));
+        result
+    }
+
+    fn emit(&self) {
+        if !self.enabled {
+            return;
+        }
+        let total: Duration = self.phases.iter().map(|(_, d)| *d).sum();
+        let phase_json: Vec<String> = self
+            .phases
+            .iter()
+            .map(|(name, d)| format!("\"{}\":{}", name, d.as_secs_f64() * 1000.0))
+            .collect();
+        eprintln!(
+            "BOWER_PROFILE_JSON {{\"post_count\":{},\"total_ms\":{},{}}}",
+            self.post_count,
+            total.as_secs_f64() * 1000.0,
+            phase_json.join(",")
+        );
+    }
+}
 
 fn setup_build_environment() -> Result<Engine, Box<dyn std::error::Error>> {
     fs::create_dir_all("build")?;
@@ -243,13 +290,18 @@ fn render_sitemap(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Bower - A Static Site Generator in Scheme\n");
 
-    let mut engine = setup_build_environment()?;
-    let posts = parse_all_posts()?;
-    render_all_posts(&mut engine, &posts)?;
-    render_index(&mut engine, &posts)?;
-    render_rss(&engine, &posts)?;
-    render_sitemap(&engine, &posts)?;
-    copy_static_assets()?;
+    let mut profile = Profile::from_env();
+
+    let mut engine = profile.phase("setup", setup_build_environment)?;
+    let posts = profile.phase("parse", parse_all_posts)?;
+    profile.post_count = posts.len();
+    profile.phase("render_posts", || render_all_posts(&mut engine, &posts))?;
+    profile.phase("render_index", || render_index(&mut engine, &posts))?;
+    profile.phase("rss", || render_rss(&engine, &posts))?;
+    profile.phase("sitemap", || render_sitemap(&engine, &posts))?;
+    profile.phase("assets", copy_static_assets)?;
+
+    profile.emit();
 
     println!("\n✓ Site built successfully!");
     println!("  Output directory: build/");

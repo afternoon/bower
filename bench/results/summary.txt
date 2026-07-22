@@ -1,0 +1,57 @@
+=== Median phase durations (ms) by post count ===
+
+phase                        1          10          50         100         250         500
+------------------------------------------------------------------------------------------
+setup_ms                 96.84      101.27       86.70       82.15       92.18       93.61
+parse_ms                 97.49      240.52      304.79      363.52      640.94     1098.49
+render_posts_ms           0.55        3.05       16.57       31.38       83.76      193.20
+render_index_ms           0.22        0.41        1.28        2.05        4.16        9.21
+rss_ms                    0.13        0.15        0.26        0.29        0.56        1.12
+sitemap_ms                0.30        0.27        0.33        0.37        0.57        0.77
+assets_ms                 0.01        0.01        0.01        0.01        0.01        0.01
+total_ms                195.64      348.45      428.99      495.09      840.70     1462.29
+
+=== Phase share of total at largest corpus (n=500) ===
+
+  parse_ms             1098.49 ms  (75.1%)
+  render_posts_ms       193.20 ms  (13.2%)
+  setup_ms               93.61 ms  ( 6.4%)
+  render_index_ms         9.21 ms  ( 0.6%)
+  rss_ms                  1.12 ms  ( 0.1%)
+  sitemap_ms              0.77 ms  ( 0.1%)
+  assets_ms               0.01 ms  ( 0.0%)
+
+=== Scaling: fixed cost vs. per-post cost (linear fit) ===
+
+  setup_ms           fixed ~   92.46 ms  +    -2.23 us/post
+  parse_ms           fixed ~  175.81 ms  +  1856.06 us/post
+  render_posts_ms    fixed ~   -3.50 ms  +   383.65 us/post
+  render_index_ms    fixed ~    0.22 ms  +    17.60 us/post
+  rss_ms             fixed ~    0.12 ms  +     1.95 us/post
+  sitemap_ms         fixed ~    0.28 ms  +     1.00 us/post
+  assets_ms          fixed ~    0.01 ms  +     0.00 us/post
+  total_ms           fixed ~  268.11 ms  +  2373.75 us/post
+
+=== Controlled experiment: code-block density (n=200 posts) ===
+
+  code_blocks/post   parse_ms (median)   total_ms (median)
+  0                        16.6               178.5
+  2                       550.8               707.7
+  6                       957.9              1129.0
+
+Parse time is ~33x higher with 2 code blocks/post than with 0, and grows
+linearly with code-block count. Since parse_post_file() calls markdown_to_html()
+inline (which invokes syntect highlighting), this isolates syntect syntax
+highlighting as the dominant build cost -- ~97% of parse time, ~75-85% of total
+build time on code-heavy corpora.
+
+=== Conclusion ===
+
+1. syntect highlighting is THE bottleneck. It runs single-threaded inside the
+   serial parse loop. Biggest wins: (a) parallelize parsing across posts
+   (rayon), and (b) reduce syntect per-line overhead / trim the SyntaxSet.
+2. setup (~92ms fixed) is Steel engine init + SyntaxSet::load_defaults. Fixed
+   cost, only worth attacking for tiny sites or watch-mode. An embedded/trimmed
+   syntect dump would cut it.
+3. render_index/rss/sitemap/assets are negligible (<1% combined). Not worth
+   optimizing.

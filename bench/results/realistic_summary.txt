@@ -109,3 +109,47 @@ Cost of the change: reintroduces a C dependency (onig_sys 69.9.3 vendors and
 statically compiles oniguruma). No runtime dylib, but a C compiler is now
 required at build time -- this reverses c779652's motivation. Trade sub-second
 build wins for a heavier/less-portable build toolchain.
+
+=== PARALLEL BUILD experiment (rayon + steel "sync" feature) ===
+
+Steel's Engine is !Send by default (Rc/RefCell throughout). Enabling steel-core
+feature "sync" swaps Rc/RefCell -> Arc/RwLock, making Engine: Send so posts can
+render across a rayon pool (one thread-local engine per worker).
+
+Results (n=500, median ms):
+  scenario   variant           total  parse  render_posts
+  realistic  onig-serial        259     44     130
+  realistic  parallel(sync)     294     18     195   <- OVERALL REGRESSION
+  baseline   onig-serial        655    387     161
+  baseline   parallel(sync)     381     79     220
+
+Parse parallelized well (44->18, 387->79). But render_posts got SLOWER, and it
+regressed the realistic total (259->294).
+
+Isolating the cause (realistic render_posts):
+  onig-serial (no sync):        130 ms
+  sync, 1 thread:               173 ms   <- pure "sync" tax: +33% on every Steel call
+  sync, 12 threads:             195 ms   <- parallelism does NOT recover the tax
+
+Conclusion: the Arc/RwLock "sync" tax on every Steel VM operation outweighs the
+parallel win for rendering, and contention/per-thread engine rebuilds make 12
+threads worse than 1. => Do NOT ship sync-based parallel rendering.
+
+Better path: parallelize PARSE only (no sync needed -- parsing doesn't touch
+Steel), keep rendering serial on the fast default (non-sync) engine. That keeps
+parse's 44->18 win and render's 130ms (vs 173+ under sync).
+
+=== FINAL: parallel PARSE only (no sync), render stays serial ===
+
+n=500, median ms:
+  scenario   variant            total  parse  render_posts
+  realistic  onig-serial        259     44     130
+  realistic  parse-parallel     225     17     122   (-13% total)
+  baseline   onig-serial        655    387     161
+  baseline   parse-parallel     287     80     125   (-56% total)
+
+render_posts is unchanged (no sync tax); parse drops 2-5x. Output byte-identical
+to serial, all 7 tests pass. This is the version shipped.
+
+Cumulative vs. original fancy-regex serial build (realistic n=500):
+  442 ms  ->  225 ms   (-49%)

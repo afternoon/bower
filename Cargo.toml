@@ -6,6 +6,11 @@ edition = "2024"
 [dependencies]
 pulldown-cmark = "0.13.0"
 steel-core = "0.7.0"
+# Parsing (markdown + syntax highlighting) is parallelized across rayon's pool.
+# Rendering stays serial: it needs Steel's Engine, which is single-threaded, and
+# the "sync" feature that would make it Send taxes every VM op more than
+# parallelism saves (see bench/results/realistic_summary.txt).
+rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 chrono = "0.4"

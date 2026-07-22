@@ -3,6 +3,7 @@ mod post;
 mod sexp_html;
 
 use post::Post;
+use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -78,62 +79,78 @@ fn setup_build_environment() -> Result<Engine, Box<dyn std::error::Error>> {
 
 /// Parses every `.md` file in `posts/`, sorted by date descending (newest first) -
 /// matching the ordering convention of the blog this generator was built for.
+///
+/// Parsing (markdown + syntax highlighting) is pure per-file work with no shared
+/// state, so files are parsed in parallel across rayon's thread pool; the sort
+/// afterwards restores the deterministic newest-first ordering.
 fn parse_all_posts() -> Result<Vec<(String, Post)>, Box<dyn std::error::Error>> {
     let posts_dir = "posts";
-    let post_files = fs::read_dir(posts_dir)?;
 
-    let mut posts = Vec::new();
+    let md_paths: Vec<std::path::PathBuf> = fs::read_dir(posts_dir)?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.is_file() && path.extension().map_or(false, |ext| ext == "md"))
+        .collect();
 
-    for entry in post_files {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
-            println!("Processing: {}", path.display());
-
-            let content = fs::read_to_string(&path)?;
-            let post = post::parse_post_file(path.to_str().unwrap(), &content)?;
-
+    let mut posts: Vec<(String, Post)> = md_paths
+        .par_iter()
+        .map(|path| {
+            let content = fs::read_to_string(path)?;
+            let post = post::parse_post_file(path.to_str().unwrap(), &content)
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
             let filename = path.file_stem().unwrap().to_str().unwrap().to_string();
-            posts.push((filename, post));
-        }
-    }
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((filename, post))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
 
     posts.sort_by(|(_, a), (_, b)| b.date.cmp(&a.date));
 
     Ok(posts)
 }
 
-/// Renders all individual post pages using the Steel engine
+/// Renders a single post to `build/posts/<filename>/index.html` using `engine`.
+fn render_one_post(
+    engine: &mut Engine,
+    filename: &str,
+    post: &Post,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let post_hash = post::post_to_steel_hash(filename, post);
+
+    let args = vec![
+        post.title.clone().into_steelval()?,
+        post::iso8601(&post.date).into_steelval()?,
+        post.content_html.clone().into_steelval()?,
+        post_hash,
+    ];
+
+    match engine.call_function_by_name_with_args("post", args) {
+        Ok(html_sexp) => {
+            let full_html = format!("<!doctype html>{}", sexp_html::sexp_to_html(&html_sexp));
+
+            let post_output_dir = format!("build/posts/{}", filename);
+            fs::create_dir_all(&post_output_dir)?;
+
+            let post_filepath = format!("{}/index.html", post_output_dir);
+            fs::write(&post_filepath, &full_html)?;
+        }
+        Err(e) => eprintln!("Error rendering post {}: {:?}", filename, e),
+    }
+
+    Ok(())
+}
+
+/// Renders all individual post pages using the Steel engine. This stays serial:
+/// Steel's `Engine` is single-threaded, and the "sync" feature that would let us
+/// share it across threads taxes every VM operation more than the parallelism
+/// saves (measured; see bench/results/realistic_summary.txt). Parsing, which is
+/// where the parallel win actually lives, runs in parallel in `parse_all_posts`.
 fn render_all_posts(
     engine: &mut Engine,
     posts: &[(String, Post)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     for (filename, post) in posts {
-        let post_hash = post::post_to_steel_hash(filename, post);
-
-        let args = vec![
-            post.title.clone().into_steelval()?,
-            post::iso8601(&post.date).into_steelval()?,
-            post.content_html.clone().into_steelval()?,
-            post_hash,
-        ];
-
-        match engine.call_function_by_name_with_args("post", args) {
-            Ok(html_sexp) => {
-                let full_html = format!("<!doctype html>{}", sexp_html::sexp_to_html(&html_sexp));
-
-                let post_output_dir = format!("build/posts/{}", filename);
-                fs::create_dir_all(&post_output_dir)?;
-
-                let post_filepath = format!("{}/index.html", post_output_dir);
-                fs::write(&post_filepath, &full_html)?;
-                println!("  -> Generated: {}", post_filepath);
-            }
-            Err(e) => eprintln!("Error rendering post {}: {:?}", filename, e),
-        }
+        render_one_post(engine, filename, post)?;
     }
-
     Ok(())
 }
 

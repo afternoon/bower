@@ -98,6 +98,25 @@ cargo run
 5. Your generated site will be in the `build/` directory, including `index.html`,
    `posts/<id>/index.html` for each post, `rss.xml`, and a sitemap.
 
+## Dev Server
+
+`bower dev` builds the site once, then starts a local server with hot reload:
+
+```bash
+cargo run -- dev
+```
+
+This serves the `build/` directory at [http://localhost:1159](http://localhost:1159) and
+watches `site.scm`, `posts/`, and `public/` for changes. On a change it rebuilds - reusing
+the already-parsed posts and only reparsing/re-rendering what actually changed, where
+possible - and tells any open browser tabs to reload:
+
+- A post's markdown file changing only reparses and re-renders that post, then regenerates
+  `index.html`, `rss.xml`, and the sitemap (since they list all posts).
+- `site.scm` changing reloads the Steel engine and re-renders every page, since templates
+  may have changed.
+- `public/` changing re-copies static assets.
+
 ## Example
 
 An example site is included in the `example/` directory. To build it:

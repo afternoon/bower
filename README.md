@@ -15,6 +15,13 @@ A static site generator using Steel Scheme and Rust. Markdown parsing in Rust, t
 cargo build
 ```
 
+## Installation
+
+```bash
+cargo build --release
+cargo install --path .
+```
+
 ## Usage
 
 1. Create a `site.scm` file with your site configuration and rendering functions. Bower
@@ -92,7 +99,7 @@ This is my first post!
 4. Run bower:
 
 ```bash
-cargo run
+bower
 ```
 
 5. Your generated site will be in the `build/` directory, including `index.html`,
@@ -103,7 +110,7 @@ cargo run
 `bower dev` builds the site once, then starts a local server with hot reload:
 
 ```bash
-cargo run -- dev
+bower dev
 ```
 
 This serves the `build/` directory at [http://localhost:1159](http://localhost:1159) and
@@ -122,7 +129,7 @@ possible - and tells any open browser tabs to reload:
 An example site is included in the `example/` directory. To build it:
 
 ```bash
-cargo run
+bower
 ```
 
 This will process the posts in `example/posts/` and generate HTML files in `build/`.

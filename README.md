@@ -205,6 +205,16 @@ Access values with `hash-ref`:
 (hash-ref post 'date-display)
 ```
 
+## Releasing
+
+Bump `version` in `Cargo.toml`, commit, then push a matching tag:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The `Release` workflow builds binaries for Linux, macOS and Windows and publishes them as a GitHub release.
+
 ## License
 
 Educational project.
